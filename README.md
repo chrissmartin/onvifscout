@@ -159,6 +159,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## ✉️ Contact
 
-Chriss Martin - thechrissmartin@gmail.com
-
 Project Link: [https://github.com/chrissmartin/onvifscout](https://github.com/chrissmartin/onvifscout)

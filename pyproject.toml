@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.semantic_release]
+version_variable = "setup.py:version"
+branch = "main"
+build_command = "python -m build"
+dist_path = "dist/"
+upload_to_pypi = true
+upload_to_release = true
+commit_message = "chore(release): {version} [skip ci]"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "feat",
+    "fix",
+    "docs",
+    "style",
+    "refactor",
+    "perf",
+    "test",
+    "build",
+    "ci",
+    "chore",
+]
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "templates/CHANGELOG.md.j2"
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*"]

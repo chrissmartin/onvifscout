@@ -8,7 +8,7 @@ class Logger:
     _last_progress = ""
     banner = f"""
 {Fore.CYAN}╔══════════════════════════════════════════════════╗
-║                ONVIF Scout v1.0.0                 ║
+║                ONVIF Scout v0.1.0                 ║
 ╚══════════════════════════════════════════════════╝{Style.RESET_ALL}
 
 {Fore.WHITE}A comprehensive ONVIF device discovery and analysis tool{Style.RESET_ALL}

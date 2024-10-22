@@ -1,0 +1,13 @@
+# Changelog
+
+{% for version in versions %}
+## {{ version.tag or "Unreleased" }}{% if version.date %} - {{ version.date }}{% endif %}
+
+{% for type, commits in version.commits_by_type.items() %}
+### {{ type }}
+
+{% for commit in commits %}
+* {{ commit.message.title }} ([`{{ commit.hash.short }}`]({{ commit.hash.link }}))
+{% endfor %}
+{% endfor %}
+{% endfor %}
