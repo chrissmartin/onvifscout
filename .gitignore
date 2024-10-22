@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+
+# IDE - PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# IDE - Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Testing
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+
+# Logging
+*.log
+logs/
+
+# Local development
+.env.local
+.env.*.local
+*.local
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documentation
+docs/_build/
+site/
+
+# Compiled files
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Distribution / packaging
+*.tar.gz
+*.tgz
+*.zip
+*.rar
+*.7z
+
+# Other
+*.bak
+*.swp
+*.swo
+*~
+.git/
+tmp/
+temp/
