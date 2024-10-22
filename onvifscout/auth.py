@@ -1,9 +1,9 @@
 # auth.py
 import concurrent.futures
-from itertools import product
-from typing import List, Tuple
 import time
 import xml.etree.ElementTree as ET
+from itertools import product
+from typing import List, Tuple
 
 import requests
 import urllib3

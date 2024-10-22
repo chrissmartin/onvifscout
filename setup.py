@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 # Read the README for the long description
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="onvifscout",
     version="0.1.0",
-    description="A comprehensive ONVIF device discovery and analysis tool for network cameras and devices",
+    description="A comprehensive ONVIF device discovery and analysis tool for network cameras and devices",  # noqa: E501
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Chriss Martin",
@@ -43,6 +43,6 @@ setup(
         "Topic :: System :: Systems Administration",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    keywords="onvif camera network security monitoring discovery ip-camera cctv surveillance",
+    keywords="onvif camera network security monitoring discovery ip-camera cctv surveillance",  # noqa: E501
     python_requires=">=3.8",
 )

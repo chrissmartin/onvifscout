@@ -1,6 +1,7 @@
-from colorama import Fore, Style
 import argparse
 from typing import Optional, Sequence, Text
+
+from colorama import Fore, Style
 
 from onvifscout.utils import Logger
 

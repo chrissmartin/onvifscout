@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
-from dotenv import load_dotenv
 from typing import List, Optional
+
+from dotenv import load_dotenv
 
 
 def verify_environment() -> List[str]:

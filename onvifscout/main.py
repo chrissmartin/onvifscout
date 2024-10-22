@@ -1,14 +1,15 @@
 import argparse
 import sys
 from typing import List, Optional
+
 import urllib3
 from colorama import Fore, Style, init
 
-from onvifscout.utils import Logger, print_banner
-from onvifscout.discovery import ONVIFDiscovery
 from onvifscout.auth import ONVIFAuthProbe
+from onvifscout.discovery import ONVIFDiscovery
 from onvifscout.features import ONVIFFeatureDetector
 from onvifscout.help_formatter import ColoredHelpFormatter
+from onvifscout.utils import Logger, print_banner
 
 # Initialize colorama for Windows compatibility
 init()

@@ -1,6 +1,6 @@
+import re
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Set, Tuple
-import re
 
 import requests
 import urllib3
@@ -73,7 +73,7 @@ class ONVIFFeatureDetector:
 
         try:
             root = ET.fromstring(response.text)
-            Logger.debug(f"XML Structure:")
+            Logger.debug("XML Structure:")
             self._log_xml_structure(root)
         except ET.ParseError as e:
             Logger.debug(f"Failed to parse XML: {str(e)}")
@@ -143,7 +143,7 @@ class ONVIFFeatureDetector:
         # Try case-insensitive search
         try:
             found = root.findall(
-                f".//*[translate(local-name(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='{tag_name.lower()}']"
+                f".//*[translate(local-name(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='{tag_name.lower()}']"  # noqa: E501
             )
             elements.extend([e for e in found if e not in elements])
             if found:
@@ -257,7 +257,7 @@ class ONVIFFeatureDetector:
                 if attr_value.lower() in ["true", "false"]:
                     capabilities[attr_name] = attr_value.lower() == "true"
                     Logger.debug(
-                        f"Added boolean attribute: {attr_name} = {capabilities[attr_name]}"
+                        f"Added boolean attribute: {attr_name} = {capabilities[attr_name]}"  # noqa: E501
                     )
                 else:
                     capabilities[attr_name] = attr_value
@@ -329,7 +329,7 @@ class ONVIFFeatureDetector:
                                 elements[0]
                             )
                             Logger.debug(
-                                f"Parsed {category} capabilities: {capabilities[category]}"
+                                f"Parsed {category} capabilities: {capabilities[category]}"  # noqa: E501
                             )
                             break
 

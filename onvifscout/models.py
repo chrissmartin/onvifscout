@@ -66,7 +66,7 @@ class ONVIFDevice:
         if self.valid_credentials:
             base += f"\n{Fore.GREEN}Valid Credentials:{Style.RESET_ALL}"
             for username, password, auth_type in self.valid_credentials:
-                base += f"\n  - {Fore.YELLOW}{username}{Fore.WHITE}:{Fore.YELLOW}{password}{Style.RESET_ALL} ({Fore.CYAN}{auth_type}{Style.RESET_ALL})"
+                base += f"\n  - {Fore.YELLOW}{username}{Fore.WHITE}:{Fore.YELLOW}{password}{Style.RESET_ALL} ({Fore.CYAN}{auth_type}{Style.RESET_ALL})"  # noqa: E501
         if self.capabilities:
             base += f"\n\n{self.capabilities}"
         return base

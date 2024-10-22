@@ -1,9 +1,9 @@
 # discovery.py
 import socket
+import time
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
-import time
 
 from .models import ONVIFDevice
 from .utils import Logger
@@ -41,7 +41,7 @@ class ONVIFDiscovery:
                     <d:Types>dn:NetworkVideoTransmitter tds:Device</d:Types>
                 </d:Probe>
             </s:Body>
-        </s:Envelope>"""
+        </s:Envelope>"""  # noqa: E501
 
     def _parse_probe_response(self, response: str) -> Optional[Dict]:
         """Parse WS-Discovery probe response with enhanced error handling"""

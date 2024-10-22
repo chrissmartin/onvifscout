@@ -1,0 +1,41 @@
+name: Lint & Format
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    name: Code quality checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff==0.7.0
+          # Verify installation
+          which ruff
+          ruff --version
+
+      - name: Check formatting
+        run: |
+          python -m ruff format --check .
+
+      - name: Run linting
+        run: |
+          python -m ruff check .
+
+      - name: Show diff if formatting failed
+        if: failure()
+        run: |
+          python -m ruff format --diff .

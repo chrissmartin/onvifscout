@@ -1,5 +1,6 @@
 import sys
 from datetime import datetime
+
 from colorama import Back, Fore, Style
 
 
@@ -78,13 +79,13 @@ class Logger:
     def debug(message: str):
         """Log a debug message if debug logging is enabled"""
         if Logger.DEBUG:
-            formatted = f"{Fore.MAGENTA}[{Logger.timestamp()}] DEBUG: {message}{Style.RESET_ALL}"
+            formatted = f"{Fore.MAGENTA}[{Logger.timestamp()}] DEBUG: {message}{Style.RESET_ALL}"  # noqa: E501
             Logger._print_with_progress_handling(formatted)
 
     @staticmethod
     def header(message: str):
         """Log a header message"""
-        formatted = f"\n{Back.BLUE}{Fore.WHITE}[{Logger.timestamp()}] {message}{Style.RESET_ALL}"
+        formatted = f"\n{Back.BLUE}{Fore.WHITE}[{Logger.timestamp()}] {message}{Style.RESET_ALL}"  # noqa: E501
         Logger._print_with_progress_handling(formatted)
 
     @staticmethod
