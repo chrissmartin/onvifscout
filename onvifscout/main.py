@@ -9,6 +9,7 @@ from onvifscout.auth import ONVIFAuthProbe
 from onvifscout.discovery import ONVIFDiscovery
 from onvifscout.features import ONVIFFeatureDetector
 from onvifscout.help_formatter import ColoredHelpFormatter
+from onvifscout.snapshot import ONVIFSnapshot
 from onvifscout.utils import Logger, print_banner
 
 # Initialize colorama for Windows compatibility
@@ -78,6 +79,17 @@ def create_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--quiet", action="store_true", help="Suppress non-essential output"
     )
+    parser.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Capture snapshot from discovered devices",
+    )
+    parser.add_argument(
+        "--snapshot-dir",
+        type=str,
+        default="snapshots",
+        help="Directory to store snapshots",
+    )
 
     # Examples section
     examples = f"""
@@ -141,7 +153,7 @@ def discover_devices(timeout: int) -> List[Optional[object]]:
 
         Logger.success(f"\nFound {len(devices)} ONVIF device(s):")
         for device in devices:
-            print(f"\n{device}")
+            print(f"Device: \n{device}")
 
         return devices
 
@@ -232,6 +244,20 @@ def main() -> None:
             # Feature detection for authenticated devices
             if not args.skip_features:
                 detect_features(devices)
+
+        # Capture snapshot if requested
+        if args.snapshot:
+            snapshot_tool = ONVIFSnapshot(timeout=args.timeout)
+            for device in devices:
+                if device.valid_credentials:
+                    Logger.info(
+                        f"\nAttempting to capture snapshot from {device.address}"
+                    )
+                    snapshot_tool.capture_snapshot(device, args.snapshot_dir)
+                else:
+                    Logger.warning(
+                        f"Skipping snapshot for {device.address} - no valid credentials"
+                    )
 
         # Print final results
         print_final_results(devices)
