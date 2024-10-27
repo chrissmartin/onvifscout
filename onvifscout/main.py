@@ -186,17 +186,13 @@ def process_arguments(args: argparse.Namespace) -> None:
         # Check if snapshot directory is valid or can be created
         try:
             os.makedirs(args.snapshot_dir, exist_ok=True)
-            # Verify write permissions
-            test_file = os.path.join(args.snapshot_dir, ".test")
-            try:
-                with open(test_file, "w") as f:
-                    f.write("test")
-                os.remove(test_file)
-            except Exception as e:
-                Logger.error(f"Cannot write to snapshot directory: {str(e)}")
-                sys.exit(1)
         except Exception as e:
             Logger.error(f"Invalid snapshot directory: {str(e)}")
+            sys.exit(1)
+
+        # Verify write permissions
+        if not os.access(args.snapshot_dir, os.W_OK):
+            Logger.error("Cannot write to snapshot directory")
             sys.exit(1)
 
         # Validate snapshot timeout
@@ -424,6 +420,10 @@ def main() -> None:
             snapshot_tool = process_snapshot_setup(args)
             if snapshot_tool:
                 handle_snapshot_capture(snapshot_tool, devices, args.snapshot_dir)
+            else:
+                Logger.error(
+                    "Snapshot tool initialization failed. Skipping snapshot capture."
+                )
 
         # Print final results
         print_final_results(devices)
