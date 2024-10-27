@@ -1,5 +1,7 @@
 import argparse
+import os
 import sys
+import traceback
 from typing import List, Optional
 
 import urllib3
@@ -9,7 +11,8 @@ from onvifscout.auth import ONVIFAuthProbe
 from onvifscout.discovery import ONVIFDiscovery
 from onvifscout.features import ONVIFFeatureDetector
 from onvifscout.help_formatter import ColoredHelpFormatter
-from onvifscout.utils import Logger, print_banner
+from onvifscout.snapshot import ONVIFSnapshot
+from onvifscout.utils import Logger, format_duration, print_banner
 
 # Initialize colorama for Windows compatibility
 init()
@@ -79,28 +82,78 @@ def create_parser() -> argparse.ArgumentParser:
         "--quiet", action="store_true", help="Suppress non-essential output"
     )
 
-    # Examples section
-    examples = f"""
-{Fore.CYAN}Examples:{Style.RESET_ALL}
-  {Fore.GREEN}Basic scan:{Style.RESET_ALL}
-    onvifscout
+    # New snapshot options group
+    snapshot_group = parser.add_argument_group("Snapshot Options")
+    snapshot_group.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Capture snapshots from discovered devices",
+    )
+    snapshot_group.add_argument(
+        "--snapshot-dir",
+        type=str,
+        default="snapshots",
+        help="Directory to store snapshots (default: snapshots)",
+    )
+    snapshot_group.add_argument(
+        "--snapshot-format",
+        type=str,
+        choices=["jpg", "jpeg", "png"],
+        default="jpg",
+        help="Image format for snapshots (default: jpg)",
+    )
+    snapshot_group.add_argument(
+        "--snapshot-quality",
+        type=int,
+        choices=range(1, 101),
+        metavar="[1-100]",
+        default=90,
+        help="JPEG quality for snapshots, 1-100 (default: 90)",
+    )
+    snapshot_group.add_argument(
+        "--snapshot-timeout",
+        type=int,
+        default=10,
+        help="Timeout for snapshot capture in seconds (default: 10)",
+    )
+    snapshot_group.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Maximum retries for failed snapshot attempts (default: 3)",
+    )
 
-  {Fore.GREEN}Extended timeout and concurrent processing:{Style.RESET_ALL}
+    # Enhanced examples section
+    examples = f"""
+    {Fore.CYAN}Examples:{Style.RESET_ALL}
+    {Fore.GREEN}Basic scan:{Style.RESET_ALL}
+        onvifscout
+
+    {Fore.GREEN}Extended timeout and concurrent processing:{Style.RESET_ALL}
     onvifscout --timeout 5 --max-workers 10
 
-  {Fore.GREEN}Custom credentials:{Style.RESET_ALL}
+    {Fore.GREEN}Custom credentials:{Style.RESET_ALL}
     onvifscout --usernames admin,root --passwords admin,12345
 
-  {Fore.GREEN}Quick discovery only:{Style.RESET_ALL}
+    {Fore.GREEN}Quick discovery only:{Style.RESET_ALL}
     onvifscout --skip-auth --skip-features
 
-  {Fore.GREEN}Debug mode:{Style.RESET_ALL}
+    {Fore.GREEN}Capture snapshots:{Style.RESET_ALL}
+    onvifscout --snapshot --snapshot-dir ./captures --snapshot-quality 95
+
+    {Fore.GREEN}Debug mode:{Style.RESET_ALL}
     onvifscout --debug
 
-{Fore.CYAN}Default Credentials Tested:{Style.RESET_ALL}
-  Usernames: admin, root, service
-  Passwords: admin, 12345, password
-"""
+    {Fore.CYAN}Default Credentials Tested:{Style.RESET_ALL}
+    Usernames: admin, root, service
+    Passwords: admin, 12345, password
+
+    {Fore.CYAN}Snapshot Support:{Style.RESET_ALL}
+    Formats: JPEG (recommended), PNG
+    Max Size: Up to 4096x4096 pixels
+    Quality: 1-100 (JPEG only, higher is better)
+    Storage: Auto-creates snapshot directory if not exists
+    """
     parser.epilog = examples
 
     return parser
@@ -128,6 +181,35 @@ def process_arguments(args: argparse.Namespace) -> None:
         Logger.error("Max workers must be at least 1")
         sys.exit(1)
 
+    # Validate snapshot-related arguments
+    if args.snapshot:
+        # Check if snapshot directory is valid or can be created
+        try:
+            os.makedirs(args.snapshot_dir, exist_ok=True)
+        except Exception as e:
+            Logger.error(f"Invalid snapshot directory: {str(e)}")
+            sys.exit(1)
+
+        # Verify write permissions
+        if not os.access(args.snapshot_dir, os.W_OK):
+            Logger.error("Cannot write to snapshot directory")
+            sys.exit(1)
+
+        # Validate snapshot timeout
+        if args.snapshot_timeout < 1:
+            Logger.error("Snapshot timeout must be at least 1 second")
+            sys.exit(1)
+
+        # Validate max retries
+        if args.max_retries < 0:
+            Logger.error("Max retries cannot be negative")
+            sys.exit(1)
+
+        # Validate snapshot quality
+        if not 1 <= args.snapshot_quality <= 100:
+            Logger.error("Snapshot quality must be between 1 and 100")
+            sys.exit(1)
+
 
 def discover_devices(timeout: int) -> List[Optional[object]]:
     """Discover ONVIF devices on the network"""
@@ -141,15 +223,13 @@ def discover_devices(timeout: int) -> List[Optional[object]]:
 
         Logger.success(f"\nFound {len(devices)} ONVIF device(s):")
         for device in devices:
-            print(f"\n{device}")
+            print(f"Device: \n{device}")
 
         return devices
 
     except Exception as e:
         Logger.error(f"Discovery failed: {str(e)}")
         if Logger.DEBUG:
-            import traceback
-
             Logger.debug(traceback.format_exc())
         return []
 
@@ -170,8 +250,6 @@ def probe_authentication(devices: List[object], args: argparse.Namespace) -> Non
     except Exception as e:
         Logger.error(f"Authentication probe failed: {str(e)}")
         if Logger.DEBUG:
-            import traceback
-
             Logger.debug(traceback.format_exc())
 
 
@@ -189,8 +267,6 @@ def detect_features(devices: List[object]) -> None:
     except Exception as e:
         Logger.error(f"Feature detection failed: {str(e)}")
         if Logger.DEBUG:
-            import traceback
-
             Logger.debug(traceback.format_exc())
 
 
@@ -202,6 +278,112 @@ def print_final_results(devices: List[object]) -> None:
     Logger.header("Final Results")
     for device in devices:
         print(f"\n{device}")
+
+
+def process_snapshot_setup(args: argparse.Namespace) -> Optional[ONVIFSnapshot]:
+    """Set up and validate snapshot functionality"""
+    try:
+        # Initialize snapshot tool with all options
+        snapshot_tool = ONVIFSnapshot(
+            timeout=args.snapshot_timeout,
+            max_retries=args.max_retries,
+            image_format=args.snapshot_format,
+            quality=args.snapshot_quality,
+            quiet=args.quiet,
+            max_workers=args.max_workers,
+        )
+
+        # Get snapshot capabilities and status
+        try:
+            status = snapshot_tool.get_snapshot_status()
+
+            if not args.quiet:
+                Logger.info("\nSnapshot Configuration:")
+                Logger.info(f"Format: {args.snapshot_format.upper()}")
+                Logger.info(f"Quality: {args.snapshot_quality}")
+                Logger.info(f"Output Directory: {args.snapshot_dir}")
+                Logger.info(
+                    f"Supported Formats: {', '.join(status['supported_formats'])}"
+                )
+                Logger.info(
+                    f"Maximum Image Size: {status['max_dimensions'][0]}x{status['max_dimensions'][1]}"  # noqa: E501
+                )
+
+                if status["rtsp_available"]:
+                    Logger.success("RTSP capture support is available")
+                else:
+                    Logger.warning(
+                        "RTSP capture support is not available (ffmpeg not found)"
+                    )
+        except AttributeError:
+            # Fallback for backward compatibility
+            if not args.quiet:
+                Logger.info("\nSnapshot Configuration:")
+                Logger.info(f"Format: {args.snapshot_format.upper()}")
+                Logger.info(f"Quality: {args.snapshot_quality}")
+                Logger.info(f"Output Directory: {args.snapshot_dir}")
+                Logger.info("Maximum Image Size: 4096x4096")
+
+                if snapshot_tool.verify_ffmpeg():
+                    Logger.success("RTSP capture support is available")
+                else:
+                    Logger.warning(
+                        "RTSP capture support is not available (ffmpeg not found)"
+                    )
+
+        return snapshot_tool
+
+    except Exception as e:
+        Logger.error(f"Failed to initialize snapshot functionality: {str(e)}")
+        if Logger.DEBUG:
+            Logger.debug(traceback.format_exc())
+        return None
+
+
+def handle_snapshot_capture(
+    snapshot_tool: ONVIFSnapshot, devices: List[object], output_dir: str
+) -> None:
+    """Handle snapshot capture for multiple devices"""
+    if not devices:
+        return
+
+    authenticated_devices = [d for d in devices if d.valid_credentials]
+    if not authenticated_devices:
+        Logger.warning("No devices with valid credentials for snapshot capture")
+        return
+
+    # Get estimated time using interface method
+    try:
+        estimated_time = snapshot_tool.estimate_capture_time(len(authenticated_devices))
+        Logger.info(f"\nEstimated capture time: {format_duration(estimated_time)}")
+    except Exception as e:
+        Logger.debug(f"Could not estimate capture time: {str(e)}")
+
+    capture_results = []
+    for device in authenticated_devices:
+        Logger.info(f"\nAttempting to capture snapshot from {device.address}")
+        try:
+            result = snapshot_tool.capture_snapshot(device, output_dir=output_dir)
+            if result:
+                Logger.success(f"Snapshot saved to: {result}")
+                capture_results.append((device.address, result))
+            else:
+                Logger.warning(f"Failed to capture snapshot from {device.address}")
+        except Exception as e:
+            Logger.error(f"Error capturing snapshot from {device.address}: {str(e)}")
+            if Logger.DEBUG:
+                Logger.debug(traceback.format_exc())
+
+    # Print summary
+    if capture_results:
+        Logger.header("\nSnapshot Capture Summary")
+        Logger.success(
+            f"Successfully captured {len(capture_results)} of {len(authenticated_devices)} snapshots"  # noqa: E501
+        )
+        for addr, path in capture_results:
+            Logger.info(f"{addr}: {path}")
+    else:
+        Logger.warning("No snapshots were captured successfully")
 
 
 def main() -> None:
@@ -233,6 +415,16 @@ def main() -> None:
             if not args.skip_features:
                 detect_features(devices)
 
+        # Handle snapshot capture if requested
+        if args.snapshot:
+            snapshot_tool = process_snapshot_setup(args)
+            if snapshot_tool:
+                handle_snapshot_capture(snapshot_tool, devices, args.snapshot_dir)
+            else:
+                Logger.error(
+                    "Snapshot tool initialization failed. Skipping snapshot capture."
+                )
+
         # Print final results
         print_final_results(devices)
 
@@ -242,8 +434,6 @@ def main() -> None:
     except Exception as e:
         Logger.error(f"An unexpected error occurred: {str(e)}")
         if Logger.DEBUG:
-            import traceback
-
             Logger.debug(traceback.format_exc())
         sys.exit(1)
 
