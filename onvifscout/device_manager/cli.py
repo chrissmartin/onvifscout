@@ -43,6 +43,9 @@ def handle_device_management(
     args, discovered_devices: List[ONVIFDevice] = None
 ) -> None:
     """Handle device management operations"""
+    if not args:
+        Logger.error("Invalid arguments provided")
+        return
     manager = DeviceManager()
 
     # Handle operations that don't need discovered devices
@@ -58,7 +61,10 @@ def handle_device_management(
         return
 
     # Handle operations that need discovered devices
-    if args.save_devices and discovered_devices:
+    if args.save_devices:
+        if not discovered_devices:
+            Logger.error("No devices discovered to save")
+            return
         _save_discovered_devices(manager, discovered_devices, args)
 
 
@@ -66,7 +72,7 @@ def _list_devices(
     manager: DeviceManager, group: str = None, tags_str: str = None
 ) -> None:
     """List devices with optional filtering"""
-    tags = tags_str.split(",") if tags_str else None
+    tags = tags_str.split(",") if tags_str and tags_str.strip() else None
     devices = manager.list_devices(group=group, tags=tags)
 
     if not devices:
@@ -86,9 +92,12 @@ def _save_discovered_devices(
     group = args.group or "default"
 
     for device in devices:
-        if manager.add_device(
-            device, group=group, tags=tags, description=args.description or ""
-        ):
-            Logger.success(f"Saved device {device.address}")
-        else:
-            Logger.error(f"Failed to save device {device.address}")
+        try:
+            if manager.add_device(
+                device, group=group, tags=tags, description=args.description or ""
+            ):
+                Logger.success(f"Saved device {device.address}")
+            else:
+                Logger.error(f"Failed to save device {device.address}")
+        except Exception as e:
+            Logger.error(f"Error saving device {device.address}: {str(e)}")

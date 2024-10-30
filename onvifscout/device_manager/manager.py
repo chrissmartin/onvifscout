@@ -1,7 +1,9 @@
+import contextlib
+import fcntl
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import ContextManager, Dict, List, Optional
 
 from ..models import ONVIFCapabilities, ONVIFDevice
 from ..utils import Logger
@@ -20,13 +22,23 @@ class DeviceManager:
         self.devices_file = self.config_dir / "devices.json"
         self._ensure_config_dir()
 
+    @contextlib.contextmanager
+    def _file_lock(self) -> ContextManager:  # type: ignore
+        """Provide file locking mechanism"""
+        lock_file = self.devices_file.with_suffix(".lock")
+        try:
+            with open(lock_file, "w") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                yield
+        finally:
+            with contextlib.suppress(Exception):
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                if lock_file.exists():
+                    lock_file.unlink()
+
     def _ensure_config_dir(self) -> None:
         """Ensure configuration directory exists"""
-        try:
-            self.config_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            Logger.error(f"Failed to create config directory: {str(e)}")
-            raise
+        self.config_dir.mkdir(parents=True, exist_ok=True)
 
     def _serialize_capabilities(
         self, capabilities: Optional[ONVIFCapabilities]
@@ -66,6 +78,7 @@ class DeviceManager:
         group: str = "default",
         tags: List[str] = None,
         description: str = None,
+        last_seen: datetime = None,
     ) -> Dict:
         """Convert ONVIFDevice object to serializable dictionary"""
         return {
@@ -75,7 +88,7 @@ class DeviceManager:
             "types": device.types,
             "valid_credentials": device.valid_credentials,
             "capabilities": self._serialize_capabilities(device.capabilities),
-            "last_seen": datetime.now().isoformat(),
+            "last_seen": (last_seen or datetime.now()).isoformat(),
             "description": description or getattr(device, "description", ""),
             "tags": tags or getattr(device, "tags", []),
             "group": group or getattr(device, "group", "default"),
@@ -99,6 +112,11 @@ class DeviceManager:
         )
         return device
 
+    def _validate_device_data(self, data: Dict) -> bool:
+        """Validate device data structure"""
+        required_fields = ["address"]
+        return all(field in data for field in required_fields)
+
     def add_device(
         self,
         device: ONVIFDevice,
@@ -106,28 +124,30 @@ class DeviceManager:
         tags: List[str] = None,
         description: str = None,
     ) -> bool:
-        """Add or update a device"""
+        """Add or update a device with proper locking and cleanup"""
+        temp_file = self.devices_file.with_suffix(".tmp")
         try:
-            devices = self.load_devices()
+            with self._file_lock():
+                devices = self.load_devices()
+                device_data = self._serialize_device(
+                    device, group=group, tags=tags, description=description
+                )
 
-            # Save device with metadata
-            devices[device.address] = self._serialize_device(
-                device, group=group, tags=tags, description=description
-            )
+                if not self._validate_device_data(device_data):
+                    raise ValueError("Invalid device data")
 
-            # Write to file atomically
-            temp_file = self.devices_file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(devices, f, indent=2)
+                devices[device.address] = device_data
 
-            # Atomic replace
-            temp_file.replace(self.devices_file)
+                with open(temp_file, "w") as f:
+                    json.dump(devices, f, indent=2)
 
-            Logger.debug(f"Device {device.address} saved successfully")
-            return True
+                temp_file.replace(self.devices_file)
+                return True
 
         except Exception as e:
             Logger.error(f"Failed to add/update device: {str(e)}")
+            if temp_file.exists():
+                temp_file.unlink()
             return False
 
     def load_devices(self) -> Dict[str, Dict]:
@@ -137,12 +157,9 @@ class DeviceManager:
                 with open(self.devices_file, "r") as f:
                     return json.load(f)
             return {}
-        except json.JSONDecodeError as e:
-            Logger.error(f"Failed to parse devices file: {str(e)}")
-            return {}
         except Exception as e:
             Logger.error(f"Failed to load devices: {str(e)}")
-            return {}
+            raise
 
     def get_device(self, address: str) -> Optional[ONVIFDevice]:
         """Get a specific device by address"""
@@ -244,12 +261,12 @@ class DeviceManager:
             tags.update(device.get("tags", []))
         return sorted(tags)
 
-    def merge_device_info(self, device: ONVIFDevice) -> None:
+    def merge_device_info(self, device: ONVIFDevice) -> bool:
         """Merge new device information with existing stored data"""
         try:
             existing = self.get_device(device.address)
             if not existing:
-                return
+                return False
 
             # Update only if new information is available
             if not device.name and existing.name:
@@ -264,8 +281,12 @@ class DeviceManager:
             device.tags = getattr(existing, "tags", [])
             device.group = getattr(existing, "group", "default")
 
+            # Save the updated device back to storage
+            return self.add_device(device)
+
         except Exception as e:
             Logger.error(f"Failed to merge device info: {str(e)}")
+            return False
 
     def clear_all(self) -> bool:
         """Clear all stored devices"""
