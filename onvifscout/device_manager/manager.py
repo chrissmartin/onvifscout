@@ -3,7 +3,7 @@ import fcntl
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import ContextManager, Dict, List, Optional
+from typing import Callable, ContextManager, Dict, List, Optional
 
 from ..models import ONVIFCapabilities, ONVIFDevice
 from ..utils import Logger
@@ -39,6 +39,40 @@ class DeviceManager:
     def _ensure_config_dir(self) -> None:
         """Ensure configuration directory exists"""
         self.config_dir.mkdir(parents=True, exist_ok=True)
+
+    def _atomic_write(self, update_func: Callable[[Dict[str, Dict]], bool]) -> bool:
+        """
+        Atomically update the devices file using the provided update function.
+
+        Args:
+            update_func: Function that takes the current
+            devices dict and returns True if updated
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        temp_file = self.devices_file.with_suffix(".tmp")
+        try:
+            with self._file_lock():
+                # Load current devices
+                devices = self.load_devices()
+
+                # Apply update
+                if not update_func(devices):
+                    return False
+
+                # Write updated data atomically
+                with open(temp_file, "w") as f:
+                    json.dump(devices, f, indent=2)
+
+                temp_file.replace(self.devices_file)
+                return True
+
+        except Exception as e:
+            Logger.error(f"Failed to update devices file: {str(e)}")
+            if temp_file.exists():
+                temp_file.unlink()
+            return False
 
     def _serialize_capabilities(
         self, capabilities: Optional[ONVIFCapabilities]
@@ -124,31 +158,19 @@ class DeviceManager:
         tags: List[str] = None,
         description: str = None,
     ) -> bool:
-        """Add or update a device with proper locking and cleanup"""
-        temp_file = self.devices_file.with_suffix(".tmp")
-        try:
-            with self._file_lock():
-                devices = self.load_devices()
-                device_data = self._serialize_device(
-                    device, group=group, tags=tags, description=description
-                )
+        """Add or update a device"""
+        device_data = self._serialize_device(
+            device, group=group, tags=tags, description=description
+        )
 
-                if not self._validate_device_data(device_data):
-                    raise ValueError("Invalid device data")
+        if not self._validate_device_data(device_data):
+            raise ValueError("Invalid device data")
 
-                devices[device.address] = device_data
+        def update_devices(devices: Dict[str, Dict]) -> bool:
+            devices[device.address] = device_data
+            return True
 
-                with open(temp_file, "w") as f:
-                    json.dump(devices, f, indent=2)
-
-                temp_file.replace(self.devices_file)
-                return True
-
-        except Exception as e:
-            Logger.error(f"Failed to add/update device: {str(e)}")
-            if temp_file.exists():
-                temp_file.unlink()
-            return False
+        return self._atomic_write(update_devices)
 
     def load_devices(self) -> Dict[str, Dict]:
         """Load all saved devices"""
@@ -187,28 +209,16 @@ class DeviceManager:
 
     def delete_device(self, address: str) -> bool:
         """Delete a device from storage"""
-        try:
-            devices = self.load_devices()
+
+        def update_devices(devices: Dict[str, Dict]) -> bool:
             if address not in devices:
                 Logger.warning(f"Device {address} not found")
                 return False
-
             del devices[address]
-
-            # Write to file atomically
-            temp_file = self.devices_file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(devices, f, indent=2)
-
-            # Atomic replace
-            temp_file.replace(self.devices_file)
-
             Logger.debug(f"Device {address} deleted successfully")
             return True
 
-        except Exception as e:
-            Logger.error(f"Failed to delete device: {str(e)}")
-            return False
+        return self._atomic_write(update_devices)
 
     def update_device_metadata(
         self,
@@ -218,8 +228,8 @@ class DeviceManager:
         description: str = None,
     ) -> bool:
         """Update device metadata"""
-        try:
-            devices = self.load_devices()
+
+        def update_devices(devices: Dict[str, Dict]) -> bool:
             if address not in devices:
                 Logger.error(f"Device {address} not found")
                 return False
@@ -232,20 +242,10 @@ class DeviceManager:
             if description is not None:
                 device_data["description"] = description
 
-            # Write to file atomically
-            temp_file = self.devices_file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(devices, f, indent=2)
-
-            # Atomic replace
-            temp_file.replace(self.devices_file)
-
             Logger.debug(f"Device {address} metadata updated successfully")
             return True
 
-        except Exception as e:
-            Logger.error(f"Failed to update device metadata: {str(e)}")
-            return False
+        return self._atomic_write(update_devices)
 
     def get_groups(self) -> List[str]:
         """Get list of all device groups"""
