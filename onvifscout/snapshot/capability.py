@@ -1,139 +1,161 @@
-import xml.etree.ElementTree as ET
-from typing import Dict, Set
-from urllib.parse import urlparse
+from typing import Dict, Optional, Set, Tuple
 
+from onvifscout.models import ONVIFDevice
+
+from ..soap import SOAPClient, SOAPMessageBuilder, SOAPParser
 from ..utils import Logger
 
 
 class CapabilityDetector:
     def __init__(self, namespaces: Dict[str, str]):
         self._namespaces = namespaces
+        self.soap_client = SOAPClient()
+        self.soap_parser = SOAPParser()
 
-    def _create_get_capabilities_message(self) -> str:
-        """Create SOAP message for GetCapabilities request"""
-        return """<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
-    <s:Body>
-        <tds:GetCapabilities xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
-            <tds:Category>Media</tds:Category>
-            <tds:Category>Imaging</tds:Category>
-        </tds:GetCapabilities>
-    </s:Body>
-</s:Envelope>"""
+    def _get_services(self, url: str, auth: Tuple[str, str, str]) -> Set[str]:
+        """Get device services with enhanced error handling and parsing"""
+        message = SOAPMessageBuilder.create_get_services()
+        root = self.soap_client.send_request(url, message, auth)
+        if not root:
+            return set()
 
-    def _extract_snapshot_capabilities(
-        self, soap_response: ET.Element
-    ) -> Dict[str, bool]:
-        """Extract snapshot-related capabilities from SOAP response"""
+        services = set()
+        search_patterns = [
+            ".//tds:Service",
+            ".//wsdl:Service",
+            ".//*[local-name()='Service']",
+            ".//*[local-name()='XAddr']",
+            ".//*[local-name()='Namespace']",
+        ]
+
+        for pattern in search_patterns:
+            try:
+                elements = root.findall(pattern, self._namespaces)
+                if elements:
+                    for service in elements:
+                        service_info = None
+                        ns_elem = service.find(".//*[local-name()='Namespace']")
+                        if ns_elem is not None and ns_elem.text:
+                            service_info = self.soap_parser.extract_service_name(
+                                ns_elem.text
+                            )
+
+                        if not service_info:
+                            xaddr = service.find(".//*[local-name()='XAddr']")
+                            if xaddr is not None and xaddr.text:
+                                service_info = self.soap_parser.extract_service_name(
+                                    xaddr.text
+                                )
+
+                        if service_info:
+                            services.add(service_info)
+                            Logger.debug(f"Found service: {service_info}")
+
+            except Exception as e:
+                Logger.debug(f"Pattern {pattern} failed: {str(e)}")
+                continue
+
+        return services
+
+    def _get_capabilities(
+        self, url: str, auth: Tuple[str, str, str]
+    ) -> Dict[str, Dict[str, bool]]:
+        """Get device capabilities with enhanced error handling and debugging"""
+        message = SOAPMessageBuilder.create_get_capabilities()
+        root = self.soap_client.send_request(url, message, auth)
+        if not root:
+            return {}
+
         capabilities = {}
-        try:
-            # Look for media capabilities
-            media = soap_response.find(
-                ".//trt:Media", self._namespaces
-            ) or soap_response.find(".//*[local-name()='Media']")
+        categories = {
+            "analytics": ["Analytics", "AnalyticsCapabilities", "AnalyticsEngine"],
+            "device": ["Device", "DeviceCapabilities", "DeviceIO"],
+            "events": ["Events", "EventCapabilities", "EventPort"],
+            "imaging": ["Imaging", "ImagingCapabilities", "ImagingSettings"],
+            "media": ["Media", "MediaCapabilities", "MediaService"],
+            "ptz": ["PTZ", "PTZCapabilities", "PTZService"],
+        }
 
-            if media is not None:
-                # Check for snapshot support
-                snapshot = media.find(
-                    ".//tt:SnapshotUri", self._namespaces
-                ) or media.find(".//*[local-name()='SnapshotUri']")
-                capabilities["SupportsSnapshot"] = snapshot is not None
+        caps_containers = self.soap_parser.find_all_elements(root, "Capabilities")
+        if not caps_containers:
+            caps_containers = self.soap_parser.find_all_elements(
+                root, "GetCapabilitiesResponse"
+            )
 
-                # Check for JPEG support
-                jpeg = media.find(".//tt:JPEG", self._namespaces) or media.find(
-                    ".//*[local-name()='JPEG']"
-                )
-                capabilities["SupportsJPEG"] = jpeg is not None
+        if caps_containers:
+            caps_root = caps_containers[0]
+            Logger.debug(f"Found capabilities container: {caps_root.tag}")
 
-                # Check for H264 support (for RTSP)
-                h264 = media.find(".//tt:H264", self._namespaces) or media.find(
-                    ".//*[local-name()='H264']"
-                )
-                capabilities["SupportsH264"] = h264 is not None
-
-            # Look for imaging capabilities
-            imaging = soap_response.find(
-                ".//timg:Imaging", self._namespaces
-            ) or soap_response.find(".//*[local-name()='Imaging']")
-            if imaging is not None:
-                capabilities["SupportsImaging"] = True
-
-        except Exception as e:
-            Logger.debug(f"Error extracting capabilities: {str(e)}")
+            for category, tag_names in categories.items():
+                for tag_name in tag_names:
+                    elements = self.soap_parser.find_all_elements(caps_root, tag_name)
+                    if elements:
+                        capabilities[category] = self.soap_parser.parse_capabilities(
+                            elements[0]
+                        )
+                        Logger.debug(
+                            f"Parsed {category} capabilities: {capabilities[category]}"
+                        )
+                        break
 
         return capabilities
 
-    def get_snapshot_endpoints(
-        self, device_url: str, soap_response: ET.Element
-    ) -> Set[str]:
-        """Extract potential snapshot endpoints from capabilities"""
-        endpoints = set()
+    def _get_device_info(self, url: str, auth: Tuple[str, str, str]) -> Optional[str]:
+        """Get device information including name/model"""
+        message = SOAPMessageBuilder.create_get_device_info()
+        root = self.soap_client.send_request(url, message, auth)
+        if not root:
+            return None
+
+        manufacturer = root.find(".//tds:Manufacturer", self._namespaces)
+        model = root.find(".//tds:Model", self._namespaces)
+
+        if manufacturer is None or model is None:
+            manufacturer = root.find(".//*[local-name()='Manufacturer']")
+            model = root.find(".//*[local-name()='Model']")
+
+        if manufacturer is not None and model is not None:
+            return f"{manufacturer.text} {model.text}".strip()
+
+        return None
+
+    def detect_features(self, device: "ONVIFDevice") -> None:
+        """Detect features for a device with enhanced logging"""
+        if not device.valid_credentials:
+            Logger.warning("No valid credentials available for feature detection")
+            return
+
+        Logger.header(f"Detecting features for device {device.address}")
+        cred = device.valid_credentials[0]
+        url = device.urls[0]
+
         try:
-            parsed = urlparse(device_url)
-            base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+            # Get device name
+            Logger.info("Fetching device information...")
+            device_name = self._get_device_info(url, cred)
+            if device_name:
+                device.name = device_name
+                Logger.success(f"Device name: {device_name}")
+            else:
+                Logger.warning("Could not fetch device name")
 
-            # Look for snapshot URI in capabilities
-            snapshot_elements = soap_response.findall(
-                ".//*[local-name()='SnapshotUri']"
-            )
-            for elem in snapshot_elements:
-                uri = elem.find(".//*[local-name()='Uri']")
-                if uri is not None and uri.text:
-                    # Handle both absolute and relative URIs
-                    if uri.text.startswith("http"):
-                        endpoints.add(uri.text)
-                    else:
-                        endpoints.add(f"{base_url}{uri.text}")
+            # Get supported services
+            Logger.info("Detecting supported services...")
+            device.capabilities.services = self._get_services(url, cred)
+            if not device.capabilities.services:
+                Logger.warning(
+                    "No services detected. Device might not support service discovery."
+                )
 
-            # Add common snapshot endpoints based on found capabilities
-            common_paths = [
-                "/onvif/snapshot",
-                "/onvif/media/snapshot",
-                "/onvif-http/snapshot",
-                "/media/snapshot",
-                "/snapshot",
-            ]
-            endpoints.update(f"{base_url}{path}" for path in common_paths)
+            # Get capabilities
+            Logger.info("Detecting device capabilities...")
+            feature_caps = self._get_capabilities(url, cred)
+
+            # Map capabilities to the device object
+            for category, caps in feature_caps.items():
+                setattr(device.capabilities, category, caps)
 
         except Exception as e:
-            Logger.debug(f"Error getting snapshot endpoints: {str(e)}")
-
-        return endpoints
-
-    def get_stream_endpoints(
-        self, device_url: str, soap_response: ET.Element
-    ) -> Set[str]:
-        """Extract potential streaming endpoints from capabilities"""
-        endpoints = set()
-        try:
-            parsed = urlparse(device_url)
-            hostname = parsed.hostname
-
-            # Look for stream URI in capabilities
-            stream_elements = soap_response.findall(
-                ".//*[local-name()='StreamingUri']"
-            ) or soap_response.findall(".//*[local-name()='StreamUri']")
-
-            for elem in stream_elements:
-                uri = elem.find(".//*[local-name()='Uri']")
-                if uri is not None and uri.text:
-                    if uri.text.startswith("rtsp"):
-                        endpoints.add(uri.text)
-                    else:
-                        endpoints.add(f"rtsp://{hostname}:554{uri.text}")
-
-            # Add common RTSP endpoints
-            common_paths = [
-                "/onvif/media/video1",
-                "/onvif/video",
-                "/live/main",
-                "/live/ch1",
-                "/stream1",
-                "/h264",
-            ]
-            endpoints.update(f"rtsp://{hostname}:554{path}" for path in common_paths)
-
-        except Exception as e:
-            Logger.debug(f"Error getting stream endpoints: {str(e)}")
-
-        return endpoints
+            Logger.error(f"Error detecting features: {str(e)}")
+        finally:
+            self.soap_client.close()
