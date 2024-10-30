@@ -8,6 +8,10 @@ import urllib3
 from colorama import Fore, Style, init
 
 from onvifscout.auth import ONVIFAuthProbe
+from onvifscout.device_manager.cli import (
+    add_device_management_args,
+    handle_device_management,
+)
 from onvifscout.discovery import ONVIFDiscovery
 from onvifscout.features import ONVIFFeatureDetector
 from onvifscout.help_formatter import ColoredHelpFormatter
@@ -123,6 +127,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Maximum retries for failed snapshot attempts (default: 3)",
     )
 
+    # Add device management arguments
+    add_device_management_args(parser)
+
     # Enhanced examples section
     examples = f"""
     {Fore.CYAN}Examples:{Style.RESET_ALL}
@@ -153,6 +160,12 @@ def create_parser() -> argparse.ArgumentParser:
     Max Size: Up to 4096x4096 pixels
     Quality: 1-100 (JPEG only, higher is better)
     Storage: Auto-creates snapshot directory if not exists
+
+    {Fore.GREEN}Device Management:{Style.RESET_ALL}
+    onvifscout --save-devices --group office --tags "floor1,hallway"
+    onvifscout --list-devices
+    onvifscout --list-devices --group office
+    onvifscout --delete-device 192.168.1.100
     """
     parser.epilog = examples
 
@@ -400,7 +413,14 @@ def main() -> None:
         if not args.quiet:
             print_banner()
 
-        # Discover devices
+        # Check if we only need to perform device management operations
+        if (args.list_devices or args.delete_device) and not (
+            args.save_devices or args.snapshot
+        ):
+            handle_device_management(args)
+            return
+
+        # Discover devices only if needed
         devices = discover_devices(args.timeout)
 
         # Skip remaining steps if no devices found
@@ -424,6 +444,10 @@ def main() -> None:
                 Logger.error(
                     "Snapshot tool initialization failed. Skipping snapshot capture."
                 )
+
+        # Handle device management if requested
+        if args.save_devices or args.list_devices or args.delete_device:
+            handle_device_management(args, devices)
 
         # Print final results
         print_final_results(devices)
