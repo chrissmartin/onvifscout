@@ -4,21 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: 'Release type'
+        description: "Release type"
         required: true
-        default: 'patch'
+        default: "patch"
         type: choice
         options:
           - major
           - minor
           - patch
       prerelease:
-        description: 'Pre-release'
+        description: "Pre-release"
         required: false
         type: boolean
         default: false
       dry_run:
-        description: 'Dry run (no actual release)'
+        description: "Dry run (no actual release)"
         required: false
         type: boolean
         default: false
@@ -40,8 +40,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
-          cache: 'pip'
+          python-version: "3.8"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -67,10 +67,14 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           changelog: true
-          build_command: ""  # Skip building, we'll do this in the publish workflow
-          tag_format: "v{version}"
-          force_level: ${{ inputs.release_type }}
-          prerelease: ${{ inputs.prerelease }}
+          build: false # Skip building, we'll do this in the publish workflow
+          tag: true
+          push: true
+          commit: true
+          args: |
+            --prerelease=${{ inputs.prerelease }}
+            --force-level=${{ inputs.release_type }}
+            --tag-format="v{version}"
 
       - name: Store release version
         if: ${{ !inputs.dry_run }}
