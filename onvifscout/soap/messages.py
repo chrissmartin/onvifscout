@@ -8,7 +8,7 @@ class SOAPMessageBuilder:
     def create_envelope(body_content: str) -> str:
         """Create a SOAP envelope with the given body content"""
         return f"""<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="{SOAP_NAMESPACES['s']}">
+<s:Envelope xmlns:s="{SOAP_NAMESPACES["s"]}">
     <s:Body>
         {body_content}
     </s:Body>
@@ -20,10 +20,10 @@ class SOAPMessageBuilder:
         message_uuid = uuid.uuid4()
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope
-    xmlns:s="{SOAP_NAMESPACES['s']}"
-    xmlns:a="{SOAP_NAMESPACES['a']}"
-    xmlns:d="{SOAP_NAMESPACES['d']}"
-    xmlns:dn="{SOAP_NAMESPACES['dn']}">
+    xmlns:s="{SOAP_NAMESPACES["s"]}"
+    xmlns:a="{SOAP_NAMESPACES["a"]}"
+    xmlns:d="{SOAP_NAMESPACES["d"]}"
+    xmlns:dn="{SOAP_NAMESPACES["dn"]}">
     <s:Header>
         <a:Action s:mustUnderstand="1">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action>
         <a:MessageID>urn:uuid:{message_uuid}</a:MessageID>
