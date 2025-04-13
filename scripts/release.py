@@ -277,11 +277,8 @@ def parse_args() -> Tuple[str, dict]:
     }
 
 
-def main():
-    # Parse arguments
-    command, options = parse_args()
-    dry_run = options["dry_run"]
-
+def setup_environment():
+    """Setup and verify the environment."""
     # Find and load .env file
     env_file = find_dotenv()
     if not env_file:
@@ -301,72 +298,127 @@ def main():
         print(f"\nPlease add them to your .env file at: {env_file}")
         sys.exit(1)
 
+
+def handle_changelog(dry_run=False):
+    """Handle the changelog command."""
+    if dry_run:
+        print("🔍 Dry run: Would update CHANGELOG.md")
+        return True
+
+    version = get_current_version()
+    if update_changelog(version):
+        print("✅ Updated CHANGELOG.md")
+        return True
+    return False
+
+
+def handle_version(version_type, dry_run=False):
+    """Handle the version command."""
+    if dry_run:
+        print(f"🔍 Dry run: Would update version ({version_type})")
+        print("🔍 Dry run: Would update CHANGELOG.md")
+        return None
+
+    version = update_version(version_type)
+    if version:
+        print(f"✅ Updated version to {version}")
+        if update_changelog(version):
+            print("✅ Updated CHANGELOG.md")
+        return version
+    return None
+
+
+def handle_release(version_type, prerelease=False, dry_run=False):
+    """Handle the release command."""
+    if dry_run:
+        print(f"🔍 Dry run: Would update version ({version_type})")
+        print("🔍 Dry run: Would update CHANGELOG.md")
+        print(f"🔍 Dry run: Would create GitHub release (prerelease: {prerelease})")
+        return True
+
+    version = update_version(version_type)
+    if not version:
+        return False
+
+    print(f"✅ Updated version to {version}")
+    if not update_changelog(version):
+        return False
+
+    print("✅ Updated CHANGELOG.md")
+    if create_release(version, prerelease):
+        print("✅ Created GitHub release")
+        return True
+    return False
+
+
+def handle_publish(version_type, prerelease=False, dry_run=False):
+    """Handle the publish command."""
+    if dry_run:
+        print(f"🔍 Dry run: Would update version ({version_type})")
+        print("🔍 Dry run: Would update CHANGELOG.md")
+        print(f"🔍 Dry run: Would create GitHub release (prerelease: {prerelease})")
+        print("🔍 Dry run: Would build and publish to PyPI")
+        return True
+
+    version = update_version(version_type)
+    if not version:
+        return False
+
+    print(f"✅ Updated version to {version}")
+    if not update_changelog(version):
+        return False
+
+    print("✅ Updated CHANGELOG.md")
+    if not create_release(version, prerelease):
+        return False
+
+    print("✅ Created GitHub release")
+    if build_and_publish():
+        print(f"✅ Published version {version} to PyPI")
+        return True
+    return False
+
+
+def main():
+    """Main entry point for the script."""
+    # Parse arguments
+    command, options = parse_args()
+    dry_run = options["dry_run"]
+
+    # Setup environment
+    setup_environment()
+
     # Process command
     try:
-        if command == "changelog":
-            if dry_run:
-                print("🔍 Dry run: Would update CHANGELOG.md")
-            else:
-                version = get_current_version()
-                if update_changelog(version):
-                    print("✅ Updated CHANGELOG.md")
+        handlers = {
+            "changelog": lambda: handle_changelog(dry_run),
+            "version": lambda: handle_version(options["version_type"], dry_run),
+            "release": lambda: handle_release(
+                options["version_type"], options["prerelease"], dry_run
+            ),
+            "publish": lambda: handle_publish(
+                options["version_type"], options["prerelease"], dry_run
+            ),
+        }
 
-        elif command == "version":
-            version_type = options["version_type"]
-            if dry_run:
-                print(f"🔍 Dry run: Would update version ({version_type})")
-                print(f"🔍 Dry run: Would update CHANGELOG.md")
-            else:
-                version = update_version(version_type)
-                if version:
-                    print(f"✅ Updated version to {version}")
-                    if update_changelog(version):
-                        print("✅ Updated CHANGELOG.md")
-
-        elif command == "release":
-            version_type = options["version_type"]
-            prerelease = options["prerelease"]
-            if dry_run:
-                print(f"🔍 Dry run: Would update version ({version_type})")
-                print(f"🔍 Dry run: Would update CHANGELOG.md")
-                print(
-                    f"🔍 Dry run: Would create GitHub release (prerelease: {prerelease})"
-                )
-            else:
-                version = update_version(version_type)
-                if version:
-                    print(f"✅ Updated version to {version}")
-                    if update_changelog(version):
-                        print("✅ Updated CHANGELOG.md")
-                        if create_release(version, prerelease):
-                            print("✅ Created GitHub release")
-
-        elif command == "publish":
-            version_type = options["version_type"]
-            prerelease = options["prerelease"]
-            if dry_run:
-                print(f"🔍 Dry run: Would update version ({version_type})")
-                print(f"🔍 Dry run: Would update CHANGELOG.md")
-                print(
-                    f"🔍 Dry run: Would create GitHub release (prerelease: {prerelease})"
-                )
-                print("🔍 Dry run: Would build and publish to PyPI")
-            else:
-                version = update_version(version_type)
-                if version:
-                    print(f"✅ Updated version to {version}")
-                    if update_changelog(version):
-                        print("✅ Updated CHANGELOG.md")
-                        if create_release(version, prerelease):
-                            print("✅ Created GitHub release")
-                            if build_and_publish():
-                                print(f"✅ Published version {version} to PyPI")
+        if command in handlers:
+            result = handlers[command]()
+            if not result and not dry_run:
+                sys.exit(1)
+        else:
+            print(f"❌ Unknown command: {command}")
+            print_help()
+            sys.exit(1)
 
     except KeyboardInterrupt:
         print("\n🛑 Operation cancelled by user")
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Unexpected error: {str(e)}")
+        if os.getenv("DEBUG"):
+            import traceback
+
+            traceback.print_exc()
         sys.exit(1)
 
 
