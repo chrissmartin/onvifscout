@@ -1,42 +1,21 @@
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
 
+from ..soap import SOAPClient, SOAPMessageBuilder, SOAPParser
 from ..utils import Logger
 
 
 class MediaProfileHandler:
     def __init__(self, namespaces: Dict[str, str]):
         self._namespaces = namespaces
-
-    def _create_get_stream_uri_message(self, profile_token: str) -> str:
-        """Create SOAP message for GetStreamUri request"""
-        return f"""<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
-    <s:Body>
-        <GetStreamUri xmlns="http://www.onvif.org/ver10/media/wsdl">
-            <StreamSetup>
-                <Stream xmlns="http://www.onvif.org/ver10/schema">RTP-Unicast</Stream>
-                <Transport xmlns="http://www.onvif.org/ver10/schema">
-                    <Protocol>RTSP</Protocol>
-                </Transport>
-            </StreamSetup>
-            <ProfileToken>{profile_token}</ProfileToken>
-        </GetStreamUri>
-    </s:Body>
-</s:Envelope>"""
+        self.soap_client = SOAPClient()
+        self.parser = SOAPParser()
 
     def get_media_profiles(self, soap_response: ET.Element) -> List[Dict[str, str]]:
         """Extract media profiles from SOAP response"""
         profiles = []
         try:
-            # Try multiple approaches to find profiles
-            profile_elements = (
-                soap_response.findall(".//trt:Profiles", self._namespaces)
-                or soap_response.findall(".//tt:Profiles", self._namespaces)
-                or soap_response.findall(".//*[local-name()='Profiles']")
-                or soap_response.findall(".//*[local-name()='Profile']")
-            )
+            profile_elements = self.parser.find_all_elements(soap_response, "Profiles")
 
             for profile in profile_elements:
                 profile_info = {
@@ -52,30 +31,38 @@ class MediaProfileHandler:
 
         return profiles
 
-    def extract_uri_from_response(self, soap_response: ET.Element) -> Optional[str]:
-        """Extract URI from SOAP response"""
+    def get_stream_uri(
+        self, url: str, profile_token: str, auth: tuple
+    ) -> Optional[str]:
+        """Get stream URI for a profile"""
         try:
-            uri_element = soap_response.find(".//*[local-name()='Uri']")
-            if uri_element is not None and uri_element.text:
-                return uri_element.text
+            message = SOAPMessageBuilder.create_get_profiles()
+            response = self.soap_client.send_request(url, message, auth)
+
+            if response is not None:
+                uri_element = response.find(".//*[local-name()='Uri']")
+                if uri_element is not None and uri_element.text:
+                    return uri_element.text
         except Exception as e:
-            Logger.debug(f"Error extracting URI from response: {str(e)}")
+            Logger.debug(f"Error getting stream URI: {str(e)}")
         return None
 
     def normalize_rtsp_url(self, url: str, device_host: str) -> str:
         """Normalize RTSP URL to ensure it's fully qualified"""
         if not url.startswith("rtsp://"):
-            # Handle relative URLs
             return (
-                f"rtsp://{device_host}:{554}{url if url.startswith('/') else '/' + url}"
+                f"rtsp://{device_host}:554{url if url.startswith('/') else '/' + url}"
             )
 
-        # Parse the URL to check components
-        parsed = urlparse(url)
-        if not parsed.port:
-            # Add default RTSP port if missing
-            parts = list(parsed)
-            parts[1] = f"{parsed.hostname}:554"
-            return parsed.scheme + "://" + parts[1] + parsed.path
+        parts = url.split("://")
+        if len(parts) == 2:
+            host_path = parts[1].split("/", 1)
+            host = host_path[0]
+            path = host_path[1] if len(host_path) > 1 else ""
+
+            if ":" not in host:
+                host = f"{host}:554"
+
+            return f"rtsp://{host}/{path}"
 
         return url
