@@ -6,7 +6,6 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="onvifscout",
-    # Remove hardcoded version - will be managed by CI
     use_scm_version={
         "version_scheme": "post-release",
         "local_scheme": "dirty-tag",
