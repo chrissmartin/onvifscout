@@ -1,9 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools_scm]
+write_to = "onvifscout/_version.py"
+version_scheme = "post-release"
+local_scheme = "dirty-tag"
+
 [tool.semantic_release]
-version_variable = "setup.py:version"
 branch = "main"
 build_command = "python -m build"
 dist_path = "dist/"
@@ -28,9 +32,6 @@ allowed_tags = [
 [tool.semantic_release.branches.main]
 match = "main"
 prerelease = false
-
-[tool.semantic_release.changelog.default_templates]
-changelog_file = "templates/CHANGELOG.md.j2"
 
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]

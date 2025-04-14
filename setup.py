@@ -6,7 +6,11 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="onvifscout",
-    version="0.1.0",
+    # Remove hardcoded version - will be managed by CI
+    use_scm_version={
+        "version_scheme": "post-release",
+        "local_scheme": "dirty-tag",
+    },
     description="A comprehensive ONVIF device discovery and analysis tool for network cameras and devices",  # noqa: E501
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -17,11 +21,16 @@ setup(
         "Documentation": "https://github.com/chrissmartin/onvifscout",
         "Source Code": "https://github.com/chrissmartin/onvifscout",
     },
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
+    include_package_data=True,
+    python_requires=">=3.8",
     install_requires=[
         "colorama>=0.4.6",
         "requests>=2.32.3",
+        "pillow>=10.0.0",
+        "urllib3>=2.2.3",
     ],
+    setup_requires=["setuptools_scm"],
     entry_points={
         "console_scripts": [
             "onvifscout=onvifscout.main:main",
@@ -44,5 +53,4 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     keywords="onvif camera network security monitoring discovery ip-camera cctv surveillance",  # noqa: E501
-    python_requires=">=3.8",
 )

@@ -16,6 +16,3 @@ __all__ = [
     "MediaProfileHandler",
     "CapabilityDetector",
 ]
-
-# Version of the snapshot module
-__version__ = "0.1.0"

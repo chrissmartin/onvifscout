@@ -3,13 +3,15 @@ from datetime import datetime
 
 from colorama import Back, Fore, Style
 
+from ._version import __version__
+
 
 class Logger:
     DEBUG = False
     _last_progress = ""
     banner = f"""
 {Fore.CYAN}╔══════════════════════════════════════════════════╗
-║                ONVIF Scout v0.1.0                 ║
+║                ONVIF Scout v{__version__}         ║
 ╚══════════════════════════════════════════════════╝{Style.RESET_ALL}
 
 {Fore.WHITE}A comprehensive ONVIF device discovery and analysis tool{Style.RESET_ALL}

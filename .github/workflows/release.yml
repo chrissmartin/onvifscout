@@ -1,0 +1,174 @@
+name: Release and Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Select prerelease type (leave empty for normal release)"
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - alpha
+          - beta
+          - rc
+      dry_run:
+        description: "Dry run (no actual release)"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  release-and-publish:
+    name: Release and Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/onvifscout
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools_scm build twine
+          pip install -e .
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Get next version
+        if: ${{ !inputs.dry_run }}
+        id: get_version
+        run: |
+          # Install semantic-release
+          pip install python-semantic-release==9.21.0
+
+          # Get next version without making changes
+          VERSION=$(semantic-release version --print)
+          echo "Next version will be: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version files
+        if: ${{ !inputs.dry_run }}
+        run: |
+          # Update _version.py file
+          VERSION="${{ steps.get_version.outputs.version }}"
+          echo "__version__ = \"$VERSION\"" > onvifscout/_version.py
+
+          # Generate changelog
+          semantic-release changelog
+
+          echo "Version updated to $VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Manually update changelog if needed
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+
+          # Check if changelog was updated properly
+          if ! grep -q "## $VERSION" CHANGELOG.md; then
+            echo "Changelog not updated by semantic-release, creating manually"
+
+            # Get commit logs since last tag
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$LAST_TAG" ]; then
+              COMMITS=$(git log --pretty=format:"* %s (%h)" --no-merges)
+            else
+              COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"* %s (%h)" --no-merges)
+            fi
+
+            # Create new changelog entry
+            DATE=$(date +%Y-%m-%d)
+            CHANGELOG_CONTENT="## $VERSION - $DATE\n\n$COMMITS\n\n$(cat CHANGELOG.md)"
+
+            # Write to changelog
+            echo -e "$CHANGELOG_CONTENT" > CHANGELOG.md
+          fi
+
+          echo "Changelog updated for version $VERSION"
+
+      - name: Commit and tag release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+
+          # Commit changes
+          git add onvifscout/_version.py CHANGELOG.md
+          git commit -m "chore(release): $VERSION [skip ci]"
+
+          # Create tag
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+
+          # Push changes
+          git push origin main
+          git push origin "v$VERSION"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build package
+        if: ${{ !inputs.dry_run }}
+        run: |
+          python -m build
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+
+          # Extract changelog content for this version
+          CHANGELOG_CONTENT=$(awk -v ver="$VERSION" '
+          BEGIN { found=0; capture=0; }
+          $0 ~ "^## " ver { found=1; capture=1; print; next }
+          $0 ~ "^## [0-9]" { if (found) capture=0 }
+          capture == 1 { print }
+          END { exit !found }
+          ' CHANGELOG.md || echo "Release $VERSION")
+
+          # Create release
+          PRERELEASE_FLAG=""
+          if [ "${{ inputs.prerelease }}" != "none" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          echo "$CHANGELOG_CONTENT" > release_notes.md
+          gh release create "v$VERSION" ./dist/* --notes-file release_notes.md --title "ONVIFScout v$VERSION" $PRERELEASE_FLAG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish package to PyPI
+        if: ${{ !inputs.dry_run && success() }}
+        run: |
+          twine upload --verbose --non-interactive dist/* -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Show dry run results
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "DRY RUN: No actual release was made"
+          echo "Would have created a release and published to PyPI"
+
+      - name: Notification
+        if: ${{ success() && !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          echo "::notice::Successfully released v$VERSION and published to PyPI"
