@@ -131,8 +131,10 @@ def update_changelog(version: str) -> bool:
 
     # Insert new entry after header
     if "# Changelog" in content:
-        content = content.replace("# Changelog\n", f"# Changelog\n\n{entry}")
+        # Ensure we insert after the header line
+        content = re.sub(r"# Changelog\n+", f"# Changelog\n\n{entry}", content)
     else:
+        # If no header exists, create it
         content = f"# Changelog\n\n{entry}\n" + content
 
     with open("CHANGELOG.md", "w") as f:

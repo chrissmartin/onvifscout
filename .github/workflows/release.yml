@@ -100,10 +100,18 @@ jobs:
 
             # Create new changelog entry
             DATE=$(date +%Y-%m-%d)
-            CHANGELOG_CONTENT="## $VERSION - $DATE\n\n$COMMITS\n\n$(cat CHANGELOG.md)"
 
-            # Write to changelog
-            echo -e "$CHANGELOG_CONTENT" > CHANGELOG.md
+            # Read existing content
+            EXISTING_CONTENT=$(cat CHANGELOG.md)
+
+            # Check if file begins with # Changelog header
+            if [[ $EXISTING_CONTENT == "# Changelog"* ]]; then
+              # Insert after the header line
+              sed -i "s/# Changelog/# Changelog\n\n## $VERSION - $DATE\n\n$COMMITS\n/" CHANGELOG.md
+            else
+              # Create new file with proper structure
+              echo -e "# Changelog\n\n## $VERSION - $DATE\n\n$COMMITS\n\n$EXISTING_CONTENT" > CHANGELOG.md
+            fi
           fi
 
           echo "Changelog updated for version $VERSION"
