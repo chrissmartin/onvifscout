@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -29,12 +30,23 @@ def find_dotenv() -> Optional[Path]:
 
 
 def get_current_version() -> str:
-    """Extract current version from setup.py."""
+    """Extract current version from _version.py or setup.py."""
+    # Try _version.py first
+    version_file = Path("onvifscout/_version.py")
+    if version_file.exists():
+        with open(version_file, "r") as f:
+            content = f.read()
+            match = re.search(r'__version__\s*=\s*"(\d+\.\d+\.\d+)"', content)
+            if match:
+                return match.group(1)
+
+    # Fall back to setup.py
     with open("setup.py", "r") as f:
         content = f.read()
         match = re.search(r'version="(\d+\.\d+\.\d+)"', content)
         if match:
             return match.group(1)
+
     return "0.0.0"  # Fallback if version not found
 
 
@@ -52,20 +64,27 @@ def update_version(version_type: str) -> Optional[str]:
     else:
         return None
 
-    # Update version in setup.py
+    # Update version in _version.py
+    version_file = Path("onvifscout/_version.py")
+    if version_file.exists():
+        with open(version_file, "w") as f:
+            f.write(f'__version__ = "{new_version}"\n')
+
+    # Also update setup.py for compatibility
     with open("setup.py", "r") as f:
         content = f.read()
 
-    content = re.sub(r'version="(\d+\.\d+\.\d+)"', f'version="{new_version}"', content)
-
-    with open("setup.py", "w") as f:
-        f.write(content)
+    # Look for version pattern in setup.py
+    if "version=" in content:
+        content = re.sub(r"version=.*?,", f'version="{new_version}",', content)
+        with open("setup.py", "w") as f:
+            f.write(content)
 
     return new_version
 
 
-def update_changelog(version: str) -> bool:
-    """Update CHANGELOG.md with new version."""
+def update_changelog(version: str) -> bool:  # noqa: C901
+    """Update CHANGELOG.md with new version using a safe approach."""
     now = datetime.now().strftime("%Y-%m-%d")
 
     # Get commit logs since last tag
@@ -104,13 +123,6 @@ def update_changelog(version: str) -> bool:
         else:
             others.append(line)
 
-    # Read current changelog
-    try:
-        with open("CHANGELOG.md", "r") as f:
-            content = f.read()
-    except FileNotFoundError:
-        content = "# Changelog\n\n"
-
     # Prepare new entry
     entry = f"## {version} - {now}\n\n"
 
@@ -132,17 +144,47 @@ def update_changelog(version: str) -> bool:
             entry += f"* {other}\n"
         entry += "\n"
 
-    # Insert new entry after header
-    if "# Changelog" in content:
-        # Ensure we insert after the header line, preserving existing content
-        content = re.sub(r"# Changelog\n+", f"# Changelog\n\n{entry}", content)
-    else:
-        # If no header exists, create it
-        content = f"# Changelog\n\n{entry}\n" + content
+    # Handle file reading and writing safely
+    changelog_path = Path("CHANGELOG.md")
 
-    with open("CHANGELOG.md", "w") as f:
-        f.write(content)
+    if not changelog_path.exists():
+        # Create new changelog file if it doesn't exist
+        with open(changelog_path, "w") as f:
+            f.write(f"# Changelog\n\n{entry}")
+        return True
 
+    # Read existing content
+    with open(changelog_path, "r") as f:
+        content = f.read()
+
+    # Create a temporary file for safe writing
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp:
+        # Write header
+        if content.startswith("# Changelog"):
+            # Keep the header from the original file
+            temp.write("# Changelog\n\n")
+        else:
+            # Add header if missing
+            temp.write("# Changelog\n\n")
+
+        # Add new entry
+        temp.write(entry)
+
+        # Add existing content without the header
+        if content.startswith("# Changelog"):
+            # Skip the first line and any blank lines immediately after it
+            lines = content.split("\n")
+            i = 1
+            while i < len(lines) and not lines[i].strip():
+                i += 1
+            remaining_content = "\n".join(lines[i:])
+            temp.write(remaining_content)
+        else:
+            # Add all content if there was no header
+            temp.write(content)
+
+    # Replace original file with our updated version
+    os.replace(temp.name, changelog_path)
     return True
 
 
@@ -151,7 +193,10 @@ def create_release(version: str, prerelease: bool = False) -> bool:
     # Create and push tag
     tag = f"v{version}"
     try:
-        subprocess.run(["git", "add", "setup.py", "CHANGELOG.md"], check=True)
+        subprocess.run(
+            ["git", "add", "setup.py", "onvifscout/_version.py", "CHANGELOG.md"],
+            check=True,
+        )
         subprocess.run(
             ["git", "commit", "-m", f"chore(release): {version}"], check=True
         )

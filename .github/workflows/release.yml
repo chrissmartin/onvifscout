@@ -85,6 +85,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
 
           # Check if changelog was updated properly
           if ! grep -q "## $VERSION" CHANGELOG.md; then
@@ -99,23 +100,23 @@ jobs:
             fi
 
             # Create new changelog entry
-            DATE=$(date +%Y-%m-%d)
             NEW_ENTRY="## $VERSION - $DATE\n\n$COMMITS\n\n"
 
-            # Read existing content
-            EXISTING_CONTENT=$(cat CHANGELOG.md)
-
-            # Check if file begins with # Changelog header
-            if [[ $EXISTING_CONTENT == "# Changelog"* ]]; then
-              # Insert after the header line but preserve existing content
-              sed -i "s/# Changelog/# Changelog\n\n$NEW_ENTRY/" CHANGELOG.md
+            # Handle file creation or update
+            if [ ! -f CHANGELOG.md ]; then
+              # Create new changelog file
+              echo -e "# Changelog\n\n$NEW_ENTRY" > CHANGELOG.md
             else
-              # Create new file with proper structure
-              echo -e "# Changelog\n\n$NEW_ENTRY$EXISTING_CONTENT" > CHANGELOG.md
+              # Update existing changelog
+              # Create a temporary file
+              TEMP_FILE=$(mktemp)
+              echo -e "# Changelog\n\n$NEW_ENTRY" > "$TEMP_FILE"
+              tail -n +2 CHANGELOG.md >> "$TEMP_FILE"
+              mv "$TEMP_FILE" CHANGELOG.md
             fi
-          fi
 
-          echo "Changelog updated for version $VERSION"
+            echo "Changelog updated with new version $VERSION"
+          fi
 
       - name: Commit and tag release
         if: ${{ !inputs.dry_run }}
