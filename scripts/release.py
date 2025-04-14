@@ -105,8 +105,11 @@ def update_changelog(version: str) -> bool:
             others.append(line)
 
     # Read current changelog
-    with open("CHANGELOG.md", "r") as f:
-        content = f.read()
+    try:
+        with open("CHANGELOG.md", "r") as f:
+            content = f.read()
+    except FileNotFoundError:
+        content = "# Changelog\n\n"
 
     # Prepare new entry
     entry = f"## {version} - {now}\n\n"
@@ -131,7 +134,7 @@ def update_changelog(version: str) -> bool:
 
     # Insert new entry after header
     if "# Changelog" in content:
-        # Ensure we insert after the header line
+        # Ensure we insert after the header line, preserving existing content
         content = re.sub(r"# Changelog\n+", f"# Changelog\n\n{entry}", content)
     else:
         # If no header exists, create it
